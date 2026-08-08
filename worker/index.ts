@@ -1,4 +1,9 @@
 import { createClient } from "redis";
+import fs from "fs";
+import path from "path";
+import { file } from "bun";
+import { spawn } from "child_process";
+import { exitCode } from "process";
 const client  = createClient();
 client.connect()
 .then(async () => {
@@ -17,15 +22,53 @@ client.connect()
 
     console.log(`Worker ${process.pid} got task for user ${parseResponse.userId}`);
 
-    if(language == "c++") {
+    if(language == "cpp") {
         console.log("Worker running user c++ code");
-        await new Promise((r) => setTimeout(r, 5000));
+        const filePath = path.join(__dirname, "code", "a.cpp");
+        const outputPath = path.join(__dirname, "code", "out.exe");
+        fs.writeFileSync(filePath, code);
+        const compile = spawn("g++", [filePath, "-o", outputPath]);
+
+        // await new Promise((r) => setTimeout(r, 2000));
+
+        compile.stderr.on("data", (chunk) => {
+        console.log("Compilation error:", chunk.toString());
+    });
+       compile.on("close", (exitCode) => {
+        if(exitCode != 0) {
+            console.log("complitaion failed");
+          return;
+        }
+       console.log("compilation successfull");
+
+        const response = spawn(outputPath);
+
+        response.stdout.on("data", (chunk) => {
+            console.log(chunk.toString());
+        });
+
+        response.stderr.on("data", (chunk) => {
+        console.log("RUNTIME ERROR:", chunk.toString());
+    });
+
+        response.on("close", (chunk) => {
+            console.log(chunk)
+        });
         console.log("succesfully run user c++ code");
+    });
     }
     if(language == "js") {
-        console.log("worker running user js code");
-        await new Promise((r) =>  setTimeout(r, 3000));
-        console.log("succesfully run user js code");
+        const filePath = __dirname + "/code/a.js";
+        console.log("Running user js code");
+        fs.writeFileSync(filePath, code);
+        const response = spawn("node", [filePath]);
+        response.stdout.on("data", (chunk) => {
+            console.log(chunk.toString());
+        });
+
+        // console.log("worker running user js code");
+        // await new Promise((r) =>  setTimeout(r, 3000));
+        // console.log("succesfully run user js code");
     }
 }
     catch (err) {
