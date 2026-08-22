@@ -1,9 +1,10 @@
 import { createClient } from "redis";
 import fs from "fs";
-import path from "path";
+import path, { parse } from "path";
 import { file } from "bun";
 import { spawn } from "child_process";
 import { exitCode } from "process";
+import { prisma } from "./db";
 const client  = createClient();
 client.connect()
 .then(async () => {
@@ -19,9 +20,10 @@ client.connect()
     console.log(`Worker ${process.pid} started`);
     const code = parseResponse.code;
     const language = parseResponse.language;
+    const submissionId = parseResponse.problemId;
 
     console.log(`Worker ${process.pid} got task for user ${parseResponse.userId}`);
-
+        let finalOutput = "";
     if(language == "cpp") {
         console.log("Worker running user c++ code");
         const filePath = path.join(__dirname, "code", "a.cpp");
@@ -45,12 +47,28 @@ client.connect()
 
         response.stdout.on("data", (chunk) => {
             console.log(chunk.toString());
+            finalOutput += chunk.toString(); 
         });
+        
+        //upadte the status in db
+        //but i want process stuck when its not completed
+        response.on("exit", async() => {
+          
+            await prisma.submissions.update({
+                where: {
+                    id: submissionId,
+
+                },
+                data: {
+                    status: "Success",
+                    output: finalOutput
+                }
+            })
+        })
 
         response.stderr.on("data", (chunk) => {
         console.log("RUNTIME ERROR:", chunk.toString());
     });
-
         response.on("close", (chunk) => {
             console.log(chunk)
         });
