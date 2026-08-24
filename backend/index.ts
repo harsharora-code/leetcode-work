@@ -5,12 +5,10 @@ const client = createClient();
 
 client.connect();
 
-
 const app = express();
 app.use(express.json());
 app.post('/submission', async (req, res) => {
-    const userId = req.body.userId;
-    const problemId = req.body.problemId;
+    // const problemId = req.body.problemId;
     const code  = req.body.code;
     const language = req.body.language;
 
@@ -23,9 +21,21 @@ app.post('/submission', async (req, res) => {
         }
     })  
     
-    client.lPush("problems", JSON.stringify({userId, problemId, code, language}));
+    client.lPush("problems", JSON.stringify({submissionId: response.id, code, language}));
     res.json({
-        message: "pending"
+        message: "pending",
+        id: response.id
+    })
+})
+
+app.get("/submission/:submissionId", async(req, res) => {
+    const response = await prisma.submissions.findFirst({
+        where: {
+            id: req.params.submissionId
+        }
+    })
+    res.json({
+        submission : response
     })
 })
 app.listen(3000);
