@@ -36,7 +36,7 @@ client.connect()
         compile.stderr.on("data", (chunk) => {
         console.log("Compilation error:", chunk.toString());
     });
-       compile.on("close", (exitCode) => {
+       compile.on("close", async (exitCode) => {
         if(exitCode != 0) {
             console.log("complitaion failed");
           return;
@@ -51,10 +51,10 @@ client.connect()
         });
         
         //upadte the status in db
-        //but i want process stuck when its not completed
-        response.on("exit", async() => {
-          
-            await prisma.submissions.update({
+        await new Promise<void>(resolve => {
+            response.on("exit", async() => {
+            //here is js thread does not move another process until this prisma call succeed
+                await prisma.submissions.update({
                 where: {
                     id: submissionId,
 
@@ -64,8 +64,11 @@ client.connect()
                     output: finalOutput
                 }
             })
-        })
+            })
+            //after the db entry succed then promise resolve
+            resolve();
 
+        })
         response.stderr.on("data", (chunk) => {
         console.log("RUNTIME ERROR:", chunk.toString());
     });
@@ -82,7 +85,23 @@ client.connect()
         const response = spawn("node", [filePath]);
         response.stdout.on("data", (chunk) => {
             console.log(chunk.toString());
+            finalOutput += chunk.toString();
         });
+        await new Promise<void>(resolve => {
+            response.on("exit", async () => {
+                await prisma.submissions.update({
+                    where: {
+                        id : submissionId,
+                    },
+                    data: {
+                        status: "Success", 
+                        output: finalOutput
+                    }
+                })
+            })
+            resolve();
+
+        })
 
         // console.log("worker running user js code");
         // await new Promise((r) =>  setTimeout(r, 3000));
