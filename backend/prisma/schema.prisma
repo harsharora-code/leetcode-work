@@ -13,7 +13,7 @@ datasource db {
 }
  model Submissions {
 
-  id          String        @id   @default(uuid())
+  id          String      @id   @default(uuid())
   code        String
   language    String
   status      SubmissionStatus   @default(Processing)

@@ -9,7 +9,6 @@ const client  = createClient();
 client.connect()
 .then(async () => {
     while(1) {
-
     const response  = await client.rPop("problems");
     if(!response) {
         await new Promise((r) => setTimeout(r, 1000));
@@ -20,7 +19,7 @@ client.connect()
     console.log(`Worker ${process.pid} started`);
     const code = parseResponse.code;
     const language = parseResponse.language;
-    const submissionId = parseResponse.problemId;
+    const submissionId = parseResponse.submissionId;
 
     console.log(`Worker ${process.pid} got task for user ${parseResponse.userId}`);
         let finalOutput = "";
