@@ -1,9 +1,10 @@
 import { createClient } from "redis";
 import fs from "fs";
-import path from "path";
+import path, { parse } from "path";
 import { file } from "bun";
 import { spawn } from "child_process";
 import { exitCode } from "process";
+import { prisma } from "./db";
 const client  = createClient();
 client.connect()
 .then(async () => {
@@ -19,9 +20,10 @@ client.connect()
     console.log(`Worker ${process.pid} started`);
     const code = parseResponse.code;
     const language = parseResponse.language;
+    const submissionId = parseResponse.problemId;
 
     console.log(`Worker ${process.pid} got task for user ${parseResponse.userId}`);
-
+        let finalOutput = "";
     if(language == "cpp") {
         console.log("Worker running user c++ code");
         const filePath = path.join(__dirname, "code", "a.cpp");
@@ -34,7 +36,7 @@ client.connect()
         compile.stderr.on("data", (chunk) => {
         console.log("Compilation error:", chunk.toString());
     });
-       compile.on("close", (exitCode) => {
+       compile.on("close", async (exitCode) => {
         if(exitCode != 0) {
             console.log("complitaion failed");
           return;
@@ -45,12 +47,31 @@ client.connect()
 
         response.stdout.on("data", (chunk) => {
             console.log(chunk.toString());
+            finalOutput += chunk.toString(); 
         });
+        
+        //upadte the status in db
+        await new Promise<void>(resolve => {
+            response.on("exit", async() => {
+            //here is js thread does not move another process until this prisma call succeed
+                await prisma.submissions.update({
+                where: {
+                    id: submissionId,
 
+                },
+                data: {
+                    status: "Success",
+                    output: finalOutput
+                }
+            })
+            })
+            //after the db entry succed then promise resolve
+            resolve();
+
+        })
         response.stderr.on("data", (chunk) => {
         console.log("RUNTIME ERROR:", chunk.toString());
     });
-
         response.on("close", (chunk) => {
             console.log(chunk)
         });
@@ -64,7 +85,23 @@ client.connect()
         const response = spawn("node", [filePath]);
         response.stdout.on("data", (chunk) => {
             console.log(chunk.toString());
+            finalOutput += chunk.toString();
         });
+        await new Promise<void>(resolve => {
+            response.on("exit", async () => {
+                await prisma.submissions.update({
+                    where: {
+                        id : submissionId,
+                    },
+                    data: {
+                        status: "Success", 
+                        output: finalOutput
+                    }
+                })
+            })
+            resolve();
+
+        })
 
         // console.log("worker running user js code");
         // await new Promise((r) =>  setTimeout(r, 3000));
