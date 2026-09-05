@@ -97,8 +97,8 @@ client.connect()
                         output: finalOutput
                     }
                 })
+                resolve();  // resolve after the db update
             })
-            resolve();
 
         })
 
