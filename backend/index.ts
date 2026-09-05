@@ -8,20 +8,22 @@ client.connect();
 const app = express();
 app.use(express.json());
 app.post('/submission', async (req, res) => {
-    // const problemId = req.body.problemId;
+    const userId = req.body.userId || "anonymous";
+    const problemId = req.body.problemId;
     const code  = req.body.code;
     const language = req.body.language;
 
     const response = await prisma.submissions.create({
         data: {
+            userId,
+            problemId,
             language,
             code, 
             status: "Processing"
-
         }
     })  
     
-    client.lPush("problems", JSON.stringify({submissionId: response.id, code, language}));
+    client.lPush("problems", JSON.stringify({submissionId: response.id, userId, problemId, code, language}));
     res.json({
         message: "pending",
         id: response.id
