@@ -14,6 +14,8 @@ datasource db {
  model Submissions {
 
   id          String      @id   @default(uuid())
+  userId      String
+  problemId   String
   code        String
   language    String
   status      SubmissionStatus   @default(Processing)
@@ -24,4 +26,5 @@ enum SubmissionStatus {
   Processing
   Success
   Failure
+  TLE
 }

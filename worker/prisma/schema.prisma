@@ -25,4 +25,5 @@ enum SubmissionStatus {
   Processing
   Success
   Failure
+  TLE
 }
