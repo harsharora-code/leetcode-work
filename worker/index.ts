@@ -82,7 +82,6 @@ client.connect().then(async () => {
             await new Promise((r) => setTimeout(r, 1000));
             continue;
         }
-
         try {
             const { submissionId, userId, problemId, code, language } = JSON.parse(response);
             console.log(`Worker ${process.pid} got submission ${submissionId} (${language})`);
