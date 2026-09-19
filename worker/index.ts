@@ -8,7 +8,6 @@ const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 5000);
 const COMPILE_TIMEOUT_MS = Number(process.env.COMPILE_TIMEOUT_MS ?? 10000);
 
 const JOBS_QUEUE = "problems";
-const COMPLETED_QUEUE = "completed_submissions";
 
 type Status = "Success" | "Failure" | "TLE";
 
@@ -90,7 +89,7 @@ client.connect().then(async () => {
             console.log(`Worker ${process.pid} got submission ${submissionId} (${language})`);
 
             const result = await runCode(language, code, submissionId);
-            await new Promise((r) => setTimeout(r, 3000));
+            // await new Promise((r) => setTimeout(r, 3000));
 
             // await prisma.submissions.update({
             //     where: {id : submissionId},
