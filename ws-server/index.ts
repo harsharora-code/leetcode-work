@@ -49,8 +49,7 @@ const server = Bun.serve<WSData>({
         return new Response("Not found", { status: 404 });
     },
     websocket: {
-       
-        message(ws, raw) {
+            message(ws, raw) {
             if (ws.data.userId) return; // already identified
 
             let msg: { userId?: string | number };

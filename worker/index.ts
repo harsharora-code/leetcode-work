@@ -2,10 +2,12 @@ import { createClient } from "redis";
 import fs from "fs/promises";
 import path from "path";
 import { spawn } from "child_process";
-import { prisma } from "./db";
+// import { prisma } from "./db";
 
 const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 5000);
 const COMPILE_TIMEOUT_MS = Number(process.env.COMPILE_TIMEOUT_MS ?? 10000);
+
+const JOBS_QUEUE = "problems";
 
 type Status = "Success" | "Failure" | "TLE";
 
@@ -77,7 +79,7 @@ const client = createClient();
 client.connect().then(async () => {
     console.log(`Worker ${process.pid} started`);
     while (true) {
-        const response = await client.rPop("problems");
+        const response = await client.rPop(JOBS_QUEUE);
         if (!response) {
             await new Promise((r) => setTimeout(r, 1000));
             continue;
@@ -87,17 +89,18 @@ client.connect().then(async () => {
             console.log(`Worker ${process.pid} got submission ${submissionId} (${language})`);
 
             const result = await runCode(language, code, submissionId);
-            await new Promise((r) => setTimeout(r, 3000));
-            await prisma.submissions.update({
-                where: {id : submissionId},
-                data: {status: result.status, output: result.output}
-            });
+            // await new Promise((r) => setTimeout(r, 3000));
+
+            // await prisma.submissions.update({
+            //     where: {id : submissionId},
+            //     data: {status: result.status, output: result.output}
+            // });
                 // await new Promise((r) => setTimeout(r, 5000));
             await client.publish(
                 "submission_results",
                 JSON.stringify({ 
-                    submissionId, 
-                    userId, 
+                    submissionId,
+                    userId,
                     problemId, 
                     status: result.status, 
                     output: result.output 
