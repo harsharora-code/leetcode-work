@@ -1,0 +1,3 @@
+# Nothing from the build context is needed inside the image; the worker mounts
+# each submission's code at /work at run time. Keep the context minimal.
+*

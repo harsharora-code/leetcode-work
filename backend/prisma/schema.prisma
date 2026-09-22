@@ -13,13 +13,15 @@ datasource db {
 }
  model Submissions {
 
-  id          String      @id   @default(uuid())
-  userId      String
-  problemId   String
-  code        String
-  language    String
-  status      SubmissionStatus   @default(Processing)
-  output      String?   
+  id               String      @id   @default(uuid())
+  userId           String
+  problemId        String
+  code             String
+  language         String
+  status           SubmissionStatus   @default(Processing)
+  output           String?
+  expectedOutput   String?
+  mode             String?   
 }
 
 enum SubmissionStatus {
