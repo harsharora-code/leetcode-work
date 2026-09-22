@@ -8,6 +8,7 @@ const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS ?? 5000);
 const COMPILE_TIMEOUT_MS = Number(process.env.COMPILE_TIMEOUT_MS ?? 10000);
 
 const JOBS_QUEUE = "problems";
+const COMPLETED_QUEUE = "completed_results";
 
 type Status = "Success" | "Failure" | "TLE";
 
@@ -85,7 +86,7 @@ client.connect().then(async () => {
             continue;
         }
         try {
-            const { submissionId, userId, problemId, code, language } = JSON.parse(response);
+            const { submissionId, code, language } = JSON.parse(response);
             console.log(`Worker ${process.pid} got submission ${submissionId} (${language})`);
 
             const result = await runCode(language, code, submissionId);
@@ -96,16 +97,17 @@ client.connect().then(async () => {
             //     data: {status: result.status, output: result.output}
             // });
                 // await new Promise((r) => setTimeout(r, 5000));
-            await client.publish(
-                "submission_results",
-                JSON.stringify({ 
-                    submissionId,
-                    userId,
-                    problemId, 
-                    status: result.status, 
-                    output: result.output 
-                }),
-            );
+            // await client.publish(
+            //     "submission_results",
+            //     JSON.stringify({ 
+            //         submissionId,
+            //         userId,
+            //         problemId, 
+            //         status: result.status, 
+            //         output: result.output 
+            //     }),
+            // );
+            await client.lPush(COMPLETED_QUEUE, JSON.stringify({submissionId, status: result.status, output: result.output}))
 
             console.log(`Worker ${process.pid} finished submission ${submissionId}: ${result.status}`);
         } catch (err) {

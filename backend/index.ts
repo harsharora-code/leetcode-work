@@ -1,13 +1,18 @@
 import express from "express";
 import { createClient } from "redis";
 import { prisma } from "./db";
-import { captureRejectionSymbol } from "node:events";
-const client = createClient();
-const resultSubcriber = createClient();
-await client.connect();
-await resultSubcriber.connect();
 
+const JOBS_QUEUE = "problems";
+const COMPLETED_QUEUE = "completed_results";
 const RESULTS_CHANNEL = "submission_results";
+
+const client = createClient();
+const resultConsumer = client.duplicate();
+
+await client.connect();
+await resultConsumer.connect();
+
+
 
 const app = express();
 app.use(express.json());
@@ -27,25 +32,56 @@ app.post('/submission', async (req, res) => {
         }
     })  
     
-   await client.lPush("problems", JSON.stringify({submissionId: response.id, userId, problemId, code, language}));
+   await client.lPush(JOBS_QUEUE, JSON.stringify({submissionId: response.id, userId, problemId, code, language}));
     res.json({
         message: "pending",
         id: response.id
     })
 })
 
-await resultSubcriber.subscribe(RESULTS_CHANNEL,  async(message) => { 
-    try {
-        const {submissionId, status, output} = JSON.parse(message);
-        await prisma.submissions.update({
-            where: {id: submissionId},
-            data: {status, output}
-        });
-        console.log(`Database update for submissionId - ${submissionId}`);
-    }catch(err) {
-        console.error("submssion not update", err);
+// await resultSubcriber.subscribe(RESULTS_CHANNEL,  async(message) => { 
+//     try {
+//         const {submissionId, status, output} = JSON.parse(message);
+//         await prisma.submissions.update({
+//             where: {id: submissionId},
+//             data: {status, output}
+//         });
+//         console.log(`Database update for submissionId - ${submissionId}`);
+//     }catch(err) {
+//         console.error("submssion not update", err);
+//     }
+// })
+
+async function consumeCompletedResult() {
+    while(true) {
+        const item = await resultConsumer.brPop(COMPLETED_QUEUE, 0);
+        if(!item) continue;
+        try {
+            const {submissionId, status, output} = JSON.parse(item.element);
+
+            const submission = await prisma.submissions.update({
+                where: {id: submissionId},
+                data: {
+                    status, output
+                },
+            });
+
+            await client.publish(
+                RESULTS_CHANNEL, 
+                JSON.stringify({
+                    submissionId: submissionId,
+                     userId: submission.userId,
+                     problemId: submission.problemId,
+                     status: submission.status,
+                     output: submission.output
+                     }),
+            );
+        } catch (error) {
+            console.error("Failed to process completed_results", error);
+        }
     }
-})
+}
+consumeCompletedResult();
 
 app.get("/submission/:submissionId", async(req, res) => {
     const response = await prisma.submissions.findFirst({
