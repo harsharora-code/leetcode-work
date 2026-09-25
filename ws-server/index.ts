@@ -1,7 +1,8 @@
 import { createClient } from "redis";
 import type { ServerWebSocket } from "bun";
 
-const PORT = Number(process.env.WS_PORT ?? 8081);
+// Hosts like Render inject PORT; prefer WS_PORT, then PORT, then the dev default.
+const PORT = Number(process.env.WS_PORT ?? process.env.PORT ?? 8081);
 const RESULTS_CHANNEL = "submission_results";
 
 type WSData = { userId: string | null };
