@@ -340,7 +340,7 @@ function ConsolePanel({
 }) {
   return (
     <div className="border-t border-border/60 bg-background">
-      <Tabs value={value} onValueChange={(v) => onValueChange(v as string)} className="gap-0">
+      <Tabs value={value} onValueChange={(v) => onValueChange(v as string)} className="flex-col gap-0">
         <div className="flex items-center justify-between border-b border-border/60 px-3 py-1.5">
           <TabsList variant="line">
             <TabsTrigger value="testcase">Testcase</TabsTrigger>

@@ -15,15 +15,7 @@ export interface SubmissionResult {
 
 type ConnectionState = "connecting" | "open" | "closed"
 
-/**
- * Connects to the ws-server (see ws-server/index.ts), identifies with the
- * anonymous userId, and surfaces result messages routed to that user.
- *
- * Protocol:
- *   -> { userId }                     (client identifies once)
- *   <- { type: "subscribed", userId } (ack)
- *   <- { submissionId, userId, problemId, status, output }  (a verdict)
- */
+
 export function useSubmissionSocket() {
   const [connection, setConnection] = React.useState<ConnectionState>("connecting")
   const [lastResult, setLastResult] = React.useState<SubmissionResult | null>(null)

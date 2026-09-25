@@ -1,28 +1,4 @@
-/*
- * Sandbox — runs untrusted user code inside a locked-down Docker container.
- *
- * SECURITY: The worker must NEVER execute submitted C++/JS directly on the
- * host. Every compile and run goes through `runInSandbox`, which shells out to
- * `docker run` with a deny-by-default profile:
- *
- *   --network none                  no network access at all
- *   --user 1001:1001                non-root (also baked into the image)
- *   --cap-drop ALL                  drop every Linux capability
- *   --security-opt no-new-privileges  no setuid escalation
- *   --read-only                     read-only root filesystem
- *   --tmpfs /tmp (noexec,nosuid)    only writable scratch, size-capped
- *   --memory / --memory-swap        RAM cap, swap disabled
- *   --cpus                          CPU cap
- *   --pids-limit                    process/thread cap (fork-bomb guard)
- *   --ulimit fsize/nofile/nproc     disk-write, fd and process rlimits
- *   -v <workdir>:/work[:ro]         only the submission dir is visible
- *
- * The wall-clock timeout is enforced host-side: on expiry we `docker rm -f`
- * the container (killing the CLI alone can orphan it).
- *
- * There is intentionally no fallback to host execution. If Docker or the image
- * is unavailable, submissions fail closed (see the worker's startup check).
- */
+
 
 import { spawn } from "child_process";
 
@@ -37,10 +13,18 @@ const NOFILE = process.env.SANDBOX_NOFILE ?? "256";
 const FSIZE = process.env.SANDBOX_FSIZE ?? String(32 * 1024 * 1024);
 // Compiling <bits/stdc++.h> needs more headroom than running.
 const COMPILE_MEMORY = process.env.SANDBOX_COMPILE_MEMORY ?? "512m";
+// Cap on captured stdout+stderr. The container's memory limit does NOT bound
+// this — output streams over a pipe into the worker process — so a program
+// spewing endless output could balloon the worker's RAM. Kill it past this.
+const MAX_OUTPUT_BYTES = Number(process.env.SANDBOX_MAX_OUTPUT_BYTES ?? 1024 * 1024);
+// Prefix for every sandbox container name, used by the orphan reaper.
+const NAME_PREFIX = "lc-";
 
 export interface SandboxResult {
     code: number | null;
     timedOut: boolean;
+    /** True if output exceeded MAX_OUTPUT_BYTES and the container was killed. */
+    outputLimitExceeded: boolean;
     stdout: string;
     stderr: string;
 }
@@ -66,7 +50,7 @@ function sanitize(s: string): string {
 
 /** Run a command inside a fully sandboxed, single-use container. */
 export function runInSandbox(opts: SandboxOpts): Promise<SandboxResult> {
-    const name = `lc-${sanitize(opts.label)}-${process.pid}-${Date.now()}-${Math.floor(
+    const name = `${NAME_PREFIX}${sanitize(opts.label)}-${process.pid}-${Date.now()}-${Math.floor(
         Math.random() * 1e6,
     )}`;
     const memory = opts.memory ?? MEMORY;
@@ -104,33 +88,56 @@ export function runInSandbox(opts: SandboxOpts): Promise<SandboxResult> {
         let stdout = "";
         let stderr = "";
         let timedOut = false;
+        let outputLimitExceeded = false;
+        let totalBytes = 0;
         let settled = false;
 
-        const done = (r: SandboxResult) => {
+        const done = (r: Omit<SandboxResult, "timedOut" | "outputLimitExceeded">) => {
             if (settled) return;
             settled = true;
-            resolve(r);
+            resolve({ ...r, timedOut, outputLimitExceeded });
+        };
+
+        const forceRemove = () => {
+            // Killing the docker CLI can leave the container running; force-remove it.
+            spawn("docker", ["rm", "-f", name], { stdio: "ignore" });
+            child.kill("SIGKILL");
         };
 
         const timer = setTimeout(() => {
             timedOut = true;
-            // Killing the docker CLI can leave the container running; force-remove it.
-            spawn("docker", ["rm", "-f", name], { stdio: "ignore" });
-            child.kill("SIGKILL");
+            forceRemove();
         }, opts.timeoutMs);
 
-        child.stdout?.on("data", (c) => { stdout += c.toString(); });
-        child.stderr?.on("data", (c) => { stderr += c.toString(); });
+        // Append a chunk, enforcing the shared stdout+stderr byte budget. Past
+        // the cap we keep only what fits, kill the container, and stop reading.
+        const append = (chunk: Buffer, sink: "out" | "err") => {
+            if (outputLimitExceeded) return;
+            const room = MAX_OUTPUT_BYTES - totalBytes;
+            if (chunk.length >= room) {
+                const slice = chunk.subarray(0, Math.max(0, room)).toString();
+                if (sink === "out") stdout += slice; else stderr += slice;
+                totalBytes = MAX_OUTPUT_BYTES;
+                outputLimitExceeded = true;
+                forceRemove();
+                return;
+            }
+            totalBytes += chunk.length;
+            if (sink === "out") stdout += chunk.toString(); else stderr += chunk.toString();
+        };
+
+        child.stdout?.on("data", (c: Buffer) => append(c, "out"));
+        child.stderr?.on("data", (c: Buffer) => append(c, "err"));
 
         child.on("error", (err) => {
             clearTimeout(timer);
             // Typically: docker not installed / not on PATH.
-            done({ code: null, timedOut, stdout, stderr: stderr + String(err) });
+            done({ code: null, stdout, stderr: stderr + String(err) });
         });
 
         child.on("close", (code) => {
             clearTimeout(timer);
-            done({ code, timedOut, stdout, stderr });
+            done({ code, stdout, stderr });
         });
     });
 }
@@ -152,4 +159,26 @@ export async function assertSandboxReady(): Promise<{ ok: boolean; message: stri
         };
     }
     return { ok: true, message: `Sandbox image "${IMAGE}" ready.` };
+}
+
+/**
+ * Remove any sandbox containers left over from a previous worker crash.
+ * Normal exits are covered by `--rm` and the timeout's `docker rm -f`; this is
+ * a startup safety net so orphans can't accumulate and hold host resources.
+ */
+export async function reapOrphans(): Promise<number> {
+    const ids = await new Promise<string[]>((resolve) => {
+        const child = spawn("docker", ["ps", "-aq", "--filter", `name=^${NAME_PREFIX}`]);
+        let out = "";
+        child.stdout?.on("data", (c) => { out += c.toString(); });
+        child.on("error", () => resolve([]));
+        child.on("close", () => resolve(out.split("\n").map((s) => s.trim()).filter(Boolean)));
+    });
+    if (ids.length === 0) return 0;
+    await new Promise<void>((resolve) => {
+        const child = spawn("docker", ["rm", "-f", ...ids], { stdio: "ignore" });
+        child.on("error", () => resolve());
+        child.on("close", () => resolve());
+    });
+    return ids.length;
 }

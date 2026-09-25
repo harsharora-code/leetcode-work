@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { getProblemSpec, getTestsForMode } from "./judge/testcases.ts";
 import { buildJs, buildCpp } from "./judge/harness.ts";
-import { runInSandbox, assertSandboxReady } from "./sandbox.ts";
+import { runInSandbox, assertSandboxReady, reapOrphans } from "./sandbox.ts";
 
 type Mode = "run" | "submit";
 
@@ -51,6 +51,7 @@ async function runCode(problemId: string, language: string, code: string, submis
                 label: `cc-${submissionId}`,
             });
             if (compile.timedOut) return { status: "TLE", output: "Compilation timed out" };
+            if (compile.outputLimitExceeded) return { status: "Failure", output: "Compiler output limit exceeded" };
             if (compile.code !== 0) return { status: "Failure", output: compile.stderr || "Compilation failed" };
 
             // Execute inside the sandbox: /work read-only, tighter memory cap.
@@ -62,6 +63,7 @@ async function runCode(problemId: string, language: string, code: string, submis
                 label: `run-${submissionId}`,
             });
             if (run.timedOut) return { status: "TLE", output: run.stdout || "Time limit exceeded" };
+            if (run.outputLimitExceeded) return { status: "Failure", output: (run.stdout || "") + "\n[output limit exceeded]" };
             if (run.code !== 0) return { status: "Failure", output: run.stdout || run.stderr };
             return { status: "Success", output: run.stdout };
         }
@@ -78,6 +80,7 @@ async function runCode(problemId: string, language: string, code: string, submis
                 label: `run-${submissionId}`,
             });
             if (run.timedOut) return { status: "TLE", output: run.stdout || "Time limit exceeded" };
+            if (run.outputLimitExceeded) return { status: "Failure", output: (run.stdout || "") + "\n[output limit exceeded]" };
             if (run.code !== 0) return { status: "Failure", output: run.stdout || run.stderr };
             return { status: "Success", output: run.stdout };
         }
@@ -88,7 +91,12 @@ async function runCode(problemId: string, language: string, code: string, submis
     }
 }
 //here we start worker to run + judge and  publish them.
-const client = createClient();
+// Redis connection is configurable for production; defaults to localhost for dev.
+const REDIS_URL = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+const client = createClient({ url: REDIS_URL });
+// Without an error listener, a connection drop throws an unhandled error and
+// crashes the worker; log instead and let node-redis reconnect.
+client.on("error", (err) => console.error("[redis] client error:", err));
 
 client.connect().then(async () => {
     console.log(`Worker ${process.pid} started`);
@@ -102,6 +110,10 @@ client.connect().then(async () => {
         process.exit(1);
     }
     console.log(`[sandbox] ${sandbox.message}`);
+
+    // Clear any containers orphaned by a previous crash before taking work.
+    const reaped = await reapOrphans();
+    if (reaped > 0) console.log(`[sandbox] reaped ${reaped} orphaned container(s)`);
 
     while (true) {
         const response = await client.brPop(JOBS_QUEUE, 0);

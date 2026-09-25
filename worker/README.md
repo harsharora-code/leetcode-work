@@ -16,6 +16,8 @@ a deny-by-default profile:
 - `--ulimit fsize/nofile/nproc` — disk-write, file-descriptor and process rlimits
 - only the submission's own directory is bind-mounted at `/work` (read-only while executing)
 - a host-side wall-clock timeout `docker rm -f`s the container on expiry
+- captured stdout+stderr is byte-capped (`SANDBOX_MAX_OUTPUT_BYTES`) — the container's memory limit doesn't bound output that streams to the worker, so a flooding program is killed
+- orphaned sandbox containers from a prior crash are reaped on startup
 
 If Docker or the sandbox image is missing, the worker **refuses to start** — it
 never falls back to running code on the host.
@@ -49,6 +51,7 @@ cd worker && bun install && bun run index.ts
 
 | Var | Default | Meaning |
 | --- | --- | --- |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Redis connection for the job/result queues |
 | `SANDBOX_IMAGE` | `leetcode-sandbox:latest` | sandbox image tag |
 | `SANDBOX_MEMORY` | `256m` | run-time memory cap |
 | `SANDBOX_COMPILE_MEMORY` | `512m` | compile-time memory cap |
@@ -57,6 +60,7 @@ cd worker && bun install && bun run index.ts
 | `SANDBOX_TMPFS` | `32m` | writable `/tmp` size |
 | `SANDBOX_FSIZE` | `33554432` | max bytes written per file (`RLIMIT_FSIZE`) |
 | `SANDBOX_NOFILE` | `256` | open file-descriptor cap |
+| `SANDBOX_MAX_OUTPUT_BYTES` | `1048576` | max captured stdout+stderr; past it the container is killed |
 | `RUN_TIMEOUT_MS` | `5000` | execution timeout |
 | `COMPILE_TIMEOUT_MS` | `10000` | compile timeout |
 

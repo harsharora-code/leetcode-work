@@ -16,28 +16,15 @@ export interface Problem {
   title: string
   difficulty: Difficulty
   tags: string[]
-  /** Short one-line summary for cards/lists. */
+ 
   summary: string
-  /** Markdown-ish description (rendered as plain paragraphs + code). */
+  
   description: string
   examples: Example[]
   constraints: string[]
   starterCode: StarterCode
   acceptance: number
 }
-
-/*
- * NOTE ON STARTER CODE
- * --------------------
- * LeetCode-style: users implement the method only. The worker
- * (worker/judge/harness.ts) wraps it with a generated driver that runs every
- * stored test case and compares the result to the expected value.
- *   - JS: a standalone function (e.g. `function twoSum(...)`); the harness calls it by name.
- *   - C++: a `class Solution { public: ... };`; the harness does `Solution().method(...)`.
- *     No includes/`main` here — the worker prepends `#include <bits/stdc++.h>` +
- *     `using namespace std;` and appends the driver.
- * Method names and C++ signatures must match worker/judge/testcases.ts.
- */
 
 const two_sum: Problem = {
   id: "1",
