@@ -9,11 +9,14 @@ type WSData = { userId: string | null };
 // userId -> the sockets belonging to that user (a user may have several tabs open)
 const userSockets = new Map<string, Set<ServerWebSocket<WSData>>>();
 
-const subscriber = createClient();
+// Redis connection is configurable for production; defaults to localhost for dev.
+const REDIS_URL = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+const subscriber = createClient({ url: REDIS_URL });
+// Log connection errors so a drop doesn't crash the process with an unhandled error.
+subscriber.on("error", (err) => console.error("[redis] subscriber error:", err));
 await subscriber.connect();
 
-// STEP 4: subscribe ONCE to the results channel and route every message to the
-// right user, using the userId the worker put in the payload.
+
 await subscriber.subscribe(RESULTS_CHANNEL, (message) => {
     console.log("received Redis result:", message);
     let payload: { userId?: string | number };
