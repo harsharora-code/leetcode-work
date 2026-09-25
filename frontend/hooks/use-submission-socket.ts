@@ -30,7 +30,7 @@ export function useSubmissionSocket() {
     function connect() {
       setConnection("connecting")
       try {
-        ws = new WebSocket(config.wsUrl)
+        ws = new WebSocket(config.wsUrl as string)
       } catch {
         scheduleReconnect()
         return

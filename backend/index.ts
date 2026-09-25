@@ -7,8 +7,13 @@ const JOBS_QUEUE = "problems";
 const COMPLETED_QUEUE = "completed_results";
 const RESULTS_CHANNEL = "submission_results";
 
-const client = createClient();
+// Redis connection is configurable for production; defaults to localhost for dev.
+const REDIS_URL = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
+const client = createClient({ url: REDIS_URL });
 const resultConsumer = client.duplicate();
+// Log connection errors so a drop doesn't crash the process with an unhandled error.
+client.on("error", (err) => console.error("[redis] client error:", err));
+resultConsumer.on("error", (err) => console.error("[redis] consumer error:", err));
 
 await client.connect();
 await resultConsumer.connect();
@@ -101,4 +106,6 @@ app.get("/submission/:submissionId", async(req, res) => {
         submission : response
     })
 })
-app.listen(3000);
+// Hosts (Railway/Render/etc.) inject the port to bind via PORT; fall back to 3000 for dev.
+const PORT = Number(process.env.PORT ?? 3000);
+app.listen(PORT, () => console.log(`Backend listening on ${PORT}`));
