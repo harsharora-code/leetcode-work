@@ -6,6 +6,9 @@ out
 dist
 *.tgz
 
+# runtime scratch: per-submission work dirs the worker writes then deletes
+/code
+
 # code coverage
 coverage
 *.lcov
@@ -38,3 +41,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 /.claude
 /.windsurf
 /prisma/migrations
+code

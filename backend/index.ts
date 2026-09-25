@@ -1,6 +1,7 @@
 import express from "express";
 import { createClient } from "redis";
 import { prisma } from "./db";
+import cors from "cors";
 
 const JOBS_QUEUE = "problems";
 const COMPLETED_QUEUE = "completed_results";
@@ -15,24 +16,31 @@ await resultConsumer.connect();
 
 
 const app = express();
+app.use(cors());
 app.use(express.json());
+
+
 app.post('/submission', async (req, res) => {
     const userId = req.body.userId || "anonymous";
     const problemId = req.body.problemId;
     const code  = req.body.code;
     const language = req.body.language;
-
+    const expectedOutput = req.body.expectedOutput;
+    // "run" judges sample cases only; "submit" judges all (sample + hidden).
+    const mode = req.body.mode === "run" ? "run" : "submit";
     const response = await prisma.submissions.create({
         data: {
             userId,
             problemId,
             language,
             code, 
-            status: "Processing"
+            status: "Processing",
+            expectedOutput,
+            mode
         }
     })  
     
-   await client.lPush(JOBS_QUEUE, JSON.stringify({submissionId: response.id, userId, problemId, code, language}));
+   await client.lPush(JOBS_QUEUE, JSON.stringify({submissionId: response.id, userId, problemId, code, language, mode}));
     res.json({
         message: "pending",
         id: response.id
