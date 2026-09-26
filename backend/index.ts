@@ -107,5 +107,5 @@ app.get("/submission/:submissionId", async(req, res) => {
     })
 })
 // Hosts (Railway/Render/etc.) inject the port to bind via PORT; fall back to 3000 for dev.
-const PORT = Number(process.env.PORT ?? 3000);
+const PORT = Number(process.env.PORT ?? 3001);
 app.listen(PORT, () => console.log(`Backend listening on ${PORT}`));

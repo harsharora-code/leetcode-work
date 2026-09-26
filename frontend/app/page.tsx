@@ -30,7 +30,7 @@ export default function Page() {
           Real-time judging over WebSocket
         </span>
         <h1 className="max-w-2xl font-heading text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-          Sharpen your skills, one problem at a time.
+          Think. Code. Execute.
         </h1>
         <p className="max-w-xl text-base text-muted-foreground">
           Write, run, and submit solutions in a real editor. Get live verdicts

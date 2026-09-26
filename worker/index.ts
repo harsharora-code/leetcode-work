@@ -15,15 +15,6 @@ const COMPLETED_QUEUE = "completed_results";
 
 type Status = "Success" | "Failure" | "TLE";
 
-// Judge a submission: wrap the user's function with the problem's test-case
-// harness, compile (C++), execute, and derive a verdict.
-//   STEP 1: get problem  -> getProblemSpec(problemId)
-//   STEP 2: get tests    -> getTestsForMode(spec, mode): "run" = samples,
-//                           "submit" = samples + hidden cases
-//   STEP 3: prepare code  -> buildJs / buildCpp
-//   STEP 4: compile       -> g++ (C++ only)
-//   STEP 5: execute       -> run the harnessed program (loops over all cases)
-//   STEP 6/7: compare + calculate result -> exit 0 = all passed, else Failure
 async function runCode(problemId: string, language: string, code: string, submissionId: string, mode: Mode): Promise<{ status: Status; output: string }> {
     const spec = getProblemSpec(problemId);
     const tests = spec ? getTestsForMode(spec, mode) : [];
