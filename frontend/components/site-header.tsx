@@ -22,7 +22,7 @@ export function SiteHeader() {
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <CodeXmlIcon className="size-4" />
           </span>
-          <span>CodeArena</span>
+          <span>NexCode</span>
         </Link>
 
         <nav className="flex items-center gap-1 text-sm">
@@ -49,7 +49,7 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
           <Avatar>
-            <AvatarFallback>U</AvatarFallback>
+            <AvatarFallback>HA</AvatarFallback>
           </Avatar>
         </div>
       </div>

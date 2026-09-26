@@ -1,4 +1,4 @@
-# CodeArena — Frontend
+# NexCode — Frontend
 
 A LeetCode-style coding platform frontend built with **Next.js 16** (App Router), **React 19**, **TypeScript**, **Tailwind CSS 4**, and **shadcn/ui** (base-nova style, dark theme). Users browse problems, solve them in a Monaco editor, and get live judge verdicts over a WebSocket.
 

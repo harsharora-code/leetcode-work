@@ -15,8 +15,8 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "CodeArena — Practice Coding Problems",
-    template: "%s · CodeArena",
+    default: "NexCode — Practice Coding Problems",
+    template: "%s · NexCode",
   },
   description:
     "A LeetCode-style coding platform. Solve problems, run code, and track your submissions.",
