@@ -13,12 +13,25 @@ const COMPILE_TIMEOUT_MS = Number(process.env.COMPILE_TIMEOUT_MS ?? 10000);
 const JOBS_QUEUE = "problems";
 const COMPLETED_QUEUE = "completed_results";
 
+const WORK_ROOT = process.env.WORK_DIR ?? path.resolve(__dirname, "code");
+
+/** Remove job files left in the shared Compose volume after an interrupted run. */
+async function clearStaleSharedJobs(): Promise<void> {
+    if (!process.env.SANDBOX_SHARED_WORK_VOLUME) return;
+    const entries = await fs.readdir(WORK_ROOT).catch(() => [] as string[]);
+    await Promise.all(
+        entries.map((entry) =>
+            fs.rm(path.join(WORK_ROOT, entry), { recursive: true, force: true }),
+        ),
+    );
+}
+
 type Status = "Success" | "Failure" | "TLE";
 
 async function runCode(problemId: string, language: string, code: string, submissionId: string, mode: Mode): Promise<{ status: Status; output: string }> {
     const spec = getProblemSpec(problemId);
     const tests = spec ? getTestsForMode(spec, mode) : [];
-    const workDir = path.resolve(__dirname, "code", submissionId);
+    const workDir = path.resolve(WORK_ROOT, submissionId);
     await fs.mkdir(workDir, { recursive: true });
     // The sandbox container runs as uid 1001; make the mounted dir writable to
     // it so g++ can emit the binary, and so the host can clean it up after.
@@ -31,12 +44,11 @@ async function runCode(problemId: string, language: string, code: string, submis
             const program = spec ? buildCpp(spec, tests, code) : code;
             await fs.writeFile(path.join(workDir, "main.cpp"), program);
 
-            // Compile inside the sandbox: /work read-write so g++ can write the
-            // ELF binary (always "main" — compilation happens in the Linux image).
+            
             const compile = await runInSandbox({
-                cmd: ["g++", "-O2", "-std=c++17", "/work/main.cpp", "-o", "/work/main"],
+                cmd: ["g++", "-O2", "-std=c++17", "main.cpp", "-o", "main"],
                 timeoutMs: COMPILE_TIMEOUT_MS,
-                hostWorkDir: workDir,
+                workDir,
                 writable: true,
                 memory: process.env.SANDBOX_COMPILE_MEMORY ?? "512m",
                 label: `cc-${submissionId}`,
@@ -47,9 +59,9 @@ async function runCode(problemId: string, language: string, code: string, submis
 
             // Execute inside the sandbox: /work read-only, tighter memory cap.
             const run = await runInSandbox({
-                cmd: ["/work/main"],
+                cmd: ["./main"],
                 timeoutMs: RUN_TIMEOUT_MS,
-                hostWorkDir: workDir,
+                workDir,
                 writable: false,
                 label: `run-${submissionId}`,
             });
@@ -64,9 +76,9 @@ async function runCode(problemId: string, language: string, code: string, submis
             await fs.writeFile(path.join(workDir, "main.js"), program);
 
             const run = await runInSandbox({
-                cmd: ["node", "/work/main.js"],
+                cmd: ["node", "main.js"],
                 timeoutMs: RUN_TIMEOUT_MS,
-                hostWorkDir: workDir,
+                workDir,
                 writable: false,
                 label: `run-${submissionId}`,
             });
@@ -102,9 +114,11 @@ client.connect().then(async () => {
     }
     console.log(`[sandbox] ${sandbox.message}`);
 
-    // Clear any containers orphaned by a previous crash before taking work.
     const reaped = await reapOrphans();
     if (reaped > 0) console.log(`[sandbox] reaped ${reaped} orphaned container(s)`);
+
+    
+    await clearStaleSharedJobs();
 
     while (true) {
         const response = await client.brPop(JOBS_QUEUE, 0);

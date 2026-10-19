@@ -1,6 +1,7 @@
 
 
 import { spawn } from "child_process";
+import path from "path";
 
 const IMAGE = process.env.SANDBOX_IMAGE ?? "leetcode-sandbox:latest";
 // Run-time limits (executing user code).
@@ -19,6 +20,9 @@ const COMPILE_MEMORY = process.env.SANDBOX_COMPILE_MEMORY ?? "512m";
 const MAX_OUTPUT_BYTES = Number(process.env.SANDBOX_MAX_OUTPUT_BYTES ?? 1024 * 1024);
 // Prefix for every sandbox container name, used by the orphan reaper.
 const NAME_PREFIX = "lc-";
+// Set by Compose so the worker and sandbox containers see the same job files.
+// The volume is mounted read-only for execution and read-write for compilation.
+const SHARED_WORK_VOLUME = process.env.SANDBOX_SHARED_WORK_VOLUME;
 
 export interface SandboxResult {
     code: number | null;
@@ -34,8 +38,8 @@ export interface SandboxOpts {
     cmd: string[];
     /** Wall-clock timeout in ms; on expiry the container is force-removed. */
     timeoutMs: number;
-    /** Absolute host path bind-mounted at /work. */
-    hostWorkDir: string;
+    /** Job directory on the host or inside the shared work volume. */
+    workDir: string;
     /** Mount /work read-write (compile) or read-only (run). */
     writable: boolean;
     /** Override the memory cap (e.g. compile needs more). */
@@ -55,6 +59,15 @@ export function runInSandbox(opts: SandboxOpts): Promise<SandboxResult> {
     )}`;
     const memory = opts.memory ?? MEMORY;
     const mount = opts.writable ? "rw" : "ro";
+
+    const volumeMount = SHARED_WORK_VOLUME
+        ? [`${SHARED_WORK_VOLUME}:/work:${mount}`]
+        : [`${opts.workDir}:/work:${mount}`];
+    // A volume mount exposes job directories beneath /work; run the command in
+    // this submission's directory. Compose intentionally runs a single worker.
+    const containerWorkDir = SHARED_WORK_VOLUME
+        ? `/work/${path.basename(opts.workDir)}`
+        : "/work";
 
     const dockerArgs = [
         "run",
@@ -77,8 +90,8 @@ export function runInSandbox(opts: SandboxOpts): Promise<SandboxResult> {
         "--read-only",
         "--tmpfs", `/tmp:rw,noexec,nosuid,nodev,size=${TMPFS_SIZE}`,
         "-e", "HOME=/tmp",
-        "-v", `${opts.hostWorkDir}:/work:${mount}`,
-        "-w", "/work",
+        "-v", ...volumeMount,
+        "-w", containerWorkDir,
         IMAGE,
         ...opts.cmd,
     ];
@@ -99,7 +112,6 @@ export function runInSandbox(opts: SandboxOpts): Promise<SandboxResult> {
         };
 
         const forceRemove = () => {
-            // Killing the docker CLI can leave the container running; force-remove it.
             spawn("docker", ["rm", "-f", name], { stdio: "ignore" });
             child.kill("SIGKILL");
         };
