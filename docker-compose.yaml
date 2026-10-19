@@ -1,0 +1,106 @@
+name: leetcode
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-leetcode}
+      POSTGRES_USER: ${POSTGRES_USER:-leetcode}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leetcode}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    command: sh -c "bunx prisma db push && bun run index.ts"
+    environment:
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leetcode}:${POSTGRES_PASSWORD:-leetcode}@postgres:5432/${POSTGRES_DB:-leetcode}?schema=public
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ws-server:
+    build:
+      context: ./ws-server
+    environment:
+      PORT: 8081
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3000
+        NEXT_PUBLIC_WS_URL: ws://localhost:8081/ws
+    environment:
+      PORT: 3000
+    ports:
+      - "3001:3000"
+    depends_on:
+      backend:
+        condition: service_started
+      ws-server:
+        condition: service_started
+
+  sandbox:
+    image: leetcode-sandbox:latest
+    build:
+      context: ./worker/sandbox
+    entrypoint: ["/bin/true"]
+
+  # Local-development only: Docker socket access is effectively host-root access.
+  # Job files use a named volume so the worker and sandbox containers share them.
+  worker:
+    build:
+      context: ./worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      WORK_DIR: /work
+      SANDBOX_IMAGE: leetcode-sandbox:latest
+      SANDBOX_SHARED_WORK_VOLUME: leetcode-worker-code
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - worker-code:/work
+    depends_on:
+      redis:
+        condition: service_healthy
+      sandbox:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  worker-code:
+    name: leetcode-worker-code
